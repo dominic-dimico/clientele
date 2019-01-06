@@ -1,0 +1,1047 @@
+#!/usr/bin/python
+
+import smartlog
+import time
+import pprint
+import tempfile 
+import os
+import re
+import code
+import numpy as np
+import pandas as pd
+import parsedatetime
+import pytz
+import smtplib
+import MySQLdb.cursors
+import matplotlib.pyplot as plt
+import random
+import configparser
+
+from blessings  import Terminal
+from mysql import connector
+from subprocess import call
+from textwrap   import wrap
+from sys        import stdin, stdout, argv
+from tabulate   import tabulate
+from datetime   import datetime,timedelta
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+from time import sleep
+from matplotlib.backends.backend_pdf import PdfPages
+from email.MIMEMultipart import MIMEMultipart
+from email.MIMEBase import MIMEBase
+from email.MIMEText import MIMEText
+from email import Encoders
+from pytz import timezone
+from googleapiclient.discovery import build
+from httplib2 import Http
+from oauth2client import file, client, tools
+
+
+# TODO: integration with calev?
+
+SCOPES = 'https://www.googleapis.com/auth/calendar'
+
+config = configparser.ConfigParser()
+config.read('/home/dominic/src/clientele/my.cfg')
+
+db = connector.connect(
+  user=config['main']['user'],
+  password=config['main']['password'],
+  host=config['main']['host'],
+  database=config['main']['database']
+);
+
+
+cursor = db.cursor(dictionary=True)
+pp = pprint.PrettyPrinter(indent=4)
+ed = os.environ.get('EDITOR', 'vim')
+t = Terminal(force_styling=True)
+cal = parsedatetime.Calendar();
+random.seed();
+
+client_headings = [
+    'id', 
+    'user', 
+    'name', 
+    'dob', 
+    'phone', 
+    'email', 
+    'skype', 
+    'services', 
+    'contact', 
+    'sex', 
+    'friendly', 
+    'local', 
+    'regular', 
+    'followup', 
+    'note' 
+]
+
+
+
+
+def incolor(color, msg):
+  if color == "red": msg = t.red(msg)
+  elif color == "yellow": msg = t.bold_yellow(msg)
+  elif color == "green": msg = t.green(msg)
+  elif color == "blue": msg = t.blue(msg)
+  elif color == "purple": msg = t.magenta(msg)
+  elif color == "black": msg = t.dim_white(msg)
+  return msg
+
+
+
+
+def random_date(start, end):
+    delta = end - start
+    random_day = random.randrange(delta.days)
+    #random.jumpahead(1);
+    secs = random_day * 24 * 60 * 60;
+    return start + timedelta(seconds=secs)
+
+
+
+
+def tapuser(user, when):
+      contact = cal.parse(when)[0]
+      contactstr = time.strftime('%Y-%m-%d %H:%M:%S', contact)
+      cursor.execute("update client set contact=%s where user=%s", (contactstr, user))
+      db.commit()
+
+
+
+def followup_prompt(client):
+          stdout.write("when>  ");
+          when = stdin.readline()
+          if when == "skip":
+            stdout.write("Skipping... ");
+          else: tapuser(client['user'], when);
+
+
+
+def maildude(client, body, session, attach):
+
+    gmail_user = 'the.dominicator@gmail.com'
+    gmail_password = '***REMOVED***'
+
+    from_addr  = gmail_user
+    to_addr    = client['email']
+
+    msg = MIMEMultipart();
+    msg['From']    = 'the.dominicator@gmail.com'
+    msg['To']      = to_addr
+
+
+    if session:
+      body = "<font face='Courier New, Courier, monospace'>" + body + "</font>";
+    mimebody = MIMEText(body, 'html');
+    msg.attach(mimebody);
+
+    if attach:
+       msg['Subject'] = "Progress Report for "+session['time'].isoformat();
+    else:
+       msg['Subject'] = client['services'].capitalize();
+
+    if attach:
+       part = MIMEBase('application', "octet-stream")
+       part.set_payload(open(attach, "rb").read())
+       Encoders.encode_base64(part)
+       part.add_header('Content-Disposition', 'attachment; filename="'+filename+'"')
+       msg.attach(part)
+
+    try:
+        smartlog.log("Sending e-mail");
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.ehlo()
+        server.login(gmail_user, gmail_password)
+        server.sendmail(from_addr, to_addr, msg.as_string())
+        server.close()
+        smartlog.ok();
+    except:
+        smartlog.fail();
+
+
+
+
+def printinfobyuser(user):
+    client = getclientbyuser(user)
+    if client:
+        print
+        printinfobyclient(client);
+
+
+
+
+def printinfobyclient(client):
+    for i in range(len(client)):
+        if client_headings[i] != "note":
+           print "{:<20} : {}".format(client_headings[i], client[client_headings[i]])
+    print "\n",client['note']
+
+
+
+
+def getclientbyuser(user):
+    smartlog.log("Fetching client");
+    cursor.execute("select "+", ".join(client_headings)+" from client where user='"+user+"'")
+    results = cursor.fetchall();
+    if results:
+       smartlog.ok();
+       return results[0]
+    smartlog.fail();
+    return None
+
+
+
+
+def getexercisebyname(name):
+    #smartlog.log("Fetching exercise");
+    #cursor.execute("select id,name,muscle_groups,exercise_type from exercise where name=\""+name+"\";");
+    cursor.execute("select * from exercise where name=%s", (name,));
+    results = cursor.fetchall();
+    if results:
+       #smartlog.ok();
+       return results[0]
+    #smartlog.fail();
+    return None
+
+
+
+
+def addexercise():
+
+    stdout.write("name>    ")
+    name = stdin.readline().rstrip('\n')
+    if name == '': name = None
+
+    stdout.write("groups>  ")
+    groups = stdin.readline().rstrip('\n')
+    if groups == '': groups = None
+
+    stdout.write("type>    ")
+    extype = stdin.readline().rstrip('\n')
+    if extype == '': extype = None
+
+    smartlog.log("Adding exercise");
+    try:
+        cursor.execute( 
+          "insert into exercise (name, muscle_groups, exercise_type) values (%s, %s, %s)",
+          (name, groups, extype)
+        )  
+        db.commit()
+        smartlog.ok();
+    except: smartlog.fail();
+
+
+
+
+def lastsessionbyuser(user):
+    client = getclientbyuser(user);
+    return lastsessionbyclient(client);
+
+
+
+
+def lastsessionbyclient(client):
+    lastsession = None;
+    smartlog.log("Getting last session");
+    if client:
+       clientid = client['id']
+       cursor.execute(
+           "select id, time, clientid, services, payment, notes from session where clientid="+str(clientid),
+       )
+       sessions = cursor.fetchall()
+       if sessions:
+          smartlog.ok();
+          session_no = len(sessions) - 1
+          lastsession = sessions[session_no]
+       else: smartlog.fail();
+    return lastsession;
+
+
+
+def colorof(client):
+    if 'hypnosis' in client['services']: color="blue";
+    elif 'training' in client['services']: color="green";
+    elif 'massage' in client['services']: color="red";
+    else: color="yellow";
+    return color;
+    
+
+def shortlist(clients):
+    for client in clients:
+        color = colorof(client);
+        print "{:<6}: {:<10} {:<6}: {:<20}".format(
+          incolor(color, "user: "),    client['user'],
+          incolor(color, "contact: "), client['contact'].ctime(),
+        );
+    print
+
+
+def listout(clients):
+    for client in clients:
+        #code.interact(local=locals());
+
+        head ='User:  {:<35}  Name:  {:<}'.format(client['user'],     client['name'])
+
+        color = colorof(client);
+
+        stdout.write(incolor(color, "User:   "));
+        stdout.write("{:<35}".format(client['user']));
+        stdout.write(incolor(color, "Name:   "));
+        stdout.write('  {:<}\n'.format(client['name']));
+
+        stdout.write(incolor(color, "Phone:  "));
+        stdout.write("{:<35}".format(client['phone']));
+        stdout.write(incolor(color, "Email:  "));
+        stdout.write('  {:<}\n'.format(client['email']));
+
+        stdout.write(incolor(color, "Serv:   "));
+        stdout.write("{:<35}".format(client['services']));
+        stdout.write(incolor(color, "Skype:  "));
+        stdout.write('  {:<}\n'.format(client['skype']));
+
+        stdout.write(incolor(color, "Tap:    "));
+        stdout.write("{:<35}".format(client['contact'].ctime()));
+        stdout.write(incolor(color, "Stats:  "));
+        stdout.write('  {}{}{}{}\n'.format(
+          client['regular'], 
+          client['local'], 
+          client['friendly'], 
+          client['followup']
+        ));
+
+        print 
+
+
+
+
+def listoutsessions(sessions):
+    for session in sessions:
+        print '-'*80;
+        print 'Time: {}'.format(session['time'])
+        print 'Serv: {}'.format(session['services'])
+        print 'Pay:  {}'.format(session['payment'])
+        print 'Note: \n\n{}'.format(session['notes'])
+
+
+
+
+def is_int(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+
+
+
+def updatenote(note):
+        if not note: note = ""
+        tf = tempfile.NamedTemporaryFile(suffix=".tmp", delete=False);
+        tf.write(note)
+        tf.flush()
+        name = tf.name
+        tf.close()
+        tf = open(name, 'rw')
+        call([ed, tf.name])
+        tf.flush()
+        note = tf.read()
+        os.unlink(tf.name)
+        return note
+
+
+def schedule_user():
+    pass
+
+
+user = ""
+while True:
+
+  if len(argv) < 2:
+      stdout.write("client> ")
+      cmd = stdin.readline().split();
+  else: cmd = argv[1:]
+
+  if (len(cmd) < 1):
+    stdout.write("Need argument - see help")
+
+
+  elif (cmd[0] == "new"):
+
+    if (len(cmd)>1):
+       if cmd[1] == "exercise":
+         addexercise();
+         break;
+
+    stdout.write("user>  ")
+    user = stdin.readline().rstrip('\n')
+    if user == '': user = None
+
+    stdout.write("name>  ")
+    name = stdin.readline().rstrip('\n')
+    if name == '': name = None
+
+    dob = None
+
+    stdout.write("phone> ")
+    phone = stdin.readline().rstrip('\n')
+    phone = re.sub('[^0-9]','', phone)
+    if phone == '': phone = None
+
+    stdout.write("email> ")
+    email = stdin.readline().rstrip('\n')
+    if email == '': email = None
+
+    stdout.write("skype> ")
+    skype = stdin.readline().rstrip('\n')
+    if skype == '': skype = None
+
+    stdout.write("servs> ")
+    services = stdin.readline().rstrip('\n')
+    if services == '': services = None
+
+    stdout.write("local> ")
+    local = stdin.readline().rstrip('\n')
+    if local == '': local = None
+    elif local == '1': local = 1;
+    else: local = 0;
+
+    sex = 0;
+
+    smartlog.log("Inserting client");
+    #try:
+    cursor.execute(
+          'insert into client (user, name, dob, phone, email, skype, services, contact, sex, local, friendly, regular, followup) values (%s, %s, %s, %s, %s, %s, %s, current_timestamp, %s, %s, %s, %s, %s)', 
+          (user, name, dob, phone, email, skype, services, sex, local, 0, 0, 1)
+    )  
+    db.commit()
+    #smartlog.ok();
+    #except: smartlog.fail();
+    tapuser(user, "two days");
+
+
+
+  elif (cmd[0] == "info"):
+    if len(cmd) < 2:
+      stdout.write("user>  ")
+      user = stdin.readline().rstrip('\n')
+    else: user = cmd[1]
+    printinfobyuser(user);
+
+
+
+  elif (cmd[0] == "list"):
+    smartlog.log("Fetching clients")
+    try:
+        cursor.execute("select "+",".join(client_headings)+" from client order by contact");
+        clients = cursor.fetchall()
+        smartlog.ok();
+    except:
+        smartlog.fail();
+    print
+    if len(cmd) >= 2:
+       if cmd[1] == "short":
+         shortlist(clients);
+    else: listout(clients);
+
+
+
+  elif (cmd[0] == "note"):
+      if len(cmd) < 2:
+        stdout.write("user>  ")
+        user = stdin.readline()
+      else: user = cmd[1]
+      client = getclientbyuser(user)
+      note = client['note'];
+      note = updatenote(note)
+      cursor.execute("update client set note=%s where user=%s", (note,user))
+      db.commit()
+
+
+
+  elif (cmd[0] == "tap"):
+      if len(cmd) > 1 and cmd[1] == "randomize":
+          if len(cmd) > 2:
+            when  = " ".join(cmd[2:]);
+            start = cal.parseDT("now")[0];
+            end   = cal.parseDT(when)[0]
+            cursor.execute("select * from client");
+	    clients = cursor.fetchall();
+	    for client in clients:
+	        if client['contact'] < start:
+		   tapdate = random_date(start, end);
+                   tapstr  = tapdate.strftime('%Y-%m-%d %H:%M:%S')
+		   user = client['user'];
+		   print "{:<20}: {}".format(user, tapstr);
+                   tapuser(user, tapstr); 
+          else: print "Error: require window"
+      else:
+          if len(cmd) < 2:
+            stdout.write("user>  ")
+            user = stdin.readline()
+          else: user = cmd[1]
+          if len(cmd) < 3:
+            stdout.write("when>  ")
+            when = stdin.readline()
+          else: when = " ".join(cmd[2:]);
+          tapuser(user, when);
+
+
+
+  elif (cmd[0] == "remind"):
+      if len(cmd) > 1:
+        pastwindow = "16 hours"
+        futurewindow = " ".join(cmd[1:]);
+      else:
+        pastwindow = "16 hours"
+        futurewindow = "16 hours"
+      past = cal.parse(pastwindow+" ago")[0]
+      future = cal.parse(futurewindow+" from now")[0]
+      past_str = time.strftime('%Y-%m-%d %H:%M:%S', past)
+      future_str = time.strftime('%Y-%m-%d %H:%M:%S', future)
+      cursor.execute(
+          "select * from client where (contact between %s and %s) order by contact",
+          (past_str, future_str)
+      )
+      clients = cursor.fetchall()
+      listout(clients);
+
+
+
+  elif (cmd[0] == "follow"):
+
+    cursor.execute(
+      "select * from client order by contact"
+    )
+    clients = cursor.fetchall();
+    now = datetime.today()
+          
+    chrome_options = webdriver.ChromeOptions()
+    prefs = {"profile.default_content_setting_values.notifications" : 2}
+    chrome_options.add_experimental_option("prefs",prefs)
+    driver = webdriver.Chrome(chrome_options=chrome_options, executable_path='/usr/lib/chromium-browser/chromedriver');
+    driver.get("http://voice.google.com");
+
+    loginbutton = driver.find_element_by_class_name("signUpLink")
+    loginbutton.click();
+
+    username = driver.find_element_by_id("identifierId");
+    username.send_keys("dominic.dimico@gmail.com");
+    username.send_keys(Keys.ENTER);
+    sleep(3);
+
+    password = driver.find_element_by_id("password");
+    passwordbox = password.find_element_by_tag_name("input");
+    passwordbox.send_keys("***REMOVED***");
+    passwordbox.send_keys(Keys.ENTER);
+    sleep(3);
+
+    messages = driver.find_elements_by_tag_name("gv-nav-item-icon")[-2];
+    messages.click();
+    sleep(1);
+
+
+    for client in clients:
+
+        contact = client['contact'];
+        delta = now - contact;
+        d = delta.total_seconds()
+
+        if abs(d) < 40000:
+
+          printinfobyclient(client);
+          msg = "";
+          lastsession = lastsessionbyclient(client);
+          if lastsession:
+             msg = msg + '\n' + 80*'-' + '\n' + lastsession['notes'];
+          stdout.write(msg);
+
+          number = client['phone'];
+          email = client['email'];
+          skype = client['skype'];
+          msg="What's up, dude?";
+
+          if skype:
+              "User has Skype, but automation not implemented"
+
+          if number:
+              #msg = re.sub('\n', '', msg);
+              sleep(1); messagebutton = driver.find_element_by_css_selector("div.md-button.md-primary.md-fab.md-mini")
+              sleep(1); messagebutton.click();
+              sleep(1); numberbox = driver.find_elements_by_tag_name("input")[1]
+              sleep(1); numberbox.send_keys(number);
+              sleep(1); numberbox.send_keys(Keys.ENTER);
+              sleep(1); numberbox.send_keys(Keys.ESCAPE);
+              sleep(1); textarea = driver.find_element_by_tag_name("textarea");
+              sleep(1); textarea.click();
+
+              answer = "x";
+              while answer != "":
+                  stdout.write("(n)ext, (u)pdate> ");
+                  answer = stdin.readline().rstrip('\n')
+                  if answer == "n": continue;
+                  elif answer == "u": 
+                    followup_prompt(client);
+                    continue;
+              sleep(1); textarea.send_keys(Keys.ENTER);
+              msg = updatenote(msg);
+
+              sleep(1); textarea.send_keys(msg);
+              sleep(1); 
+              answer="x";
+
+
+          elif email:
+              stdout.write("Hit [Enter] to Continue> ");
+              stdin.readline();
+              msg = updatenote(msg);
+              maildude(client, msg, None, None);
+  
+
+          followup_prompt(client);
+
+
+
+  elif (cmd[0] == "status"):
+      print "Not yet implemented; should print current status of client and ask to update"
+
+
+
+  elif (cmd[0] == "report"):
+
+     if len(cmd) < 2:
+       stdout.write("user>  ")
+       user = stdin.readline().rstrip('\n')
+     else: user = cmd[1]
+
+#     exercise = None
+#     if len(cmd) >= 2:
+#     else: exercise = " ".join(cmd[2:])
+
+     client = getclientbyuser(user);
+     clientid = client['id']
+     cursor.execute(
+       "select session.id,exercise_set.time,name,resistance,reps from exercise_set inner join session inner join exercise where exercise_set.sessionid = session.id and exercise_set.exerciseid = exercise.id and exercise_set.clientid = "+str(clientid)
+     )
+     results = cursor.fetchall();
+
+     df = pd.DataFrame.from_dict(results);
+     df['vol'] = df['reps']*df['resistance'];
+     exs = df.groupby('name');
+     
+     filename = "/home/dominic/box/"+user+'.pdf'
+     pp = PdfPages(filename)
+     for ex, dat in exs:
+	 fig = plt.figure();
+         plt.title(ex);
+	 plt.xlabel("Time");
+	 plt.ylabel("Volume");
+         times = dat['time'];
+	 vols  = dat['vol'];
+	 plt.plot(times, vols, "o");
+	 #plt.show();
+	 pp.savefig(fig);
+     pp.close();
+
+     headings = ['session', 'time', 'name', 'load', 'reps'];
+     print tabulate(results);
+    
+     lastsession = lastsessionbyuser(user);
+     cursor.execute("select exercise_set.time,name,resistance,reps from exercise_set inner join session inner join exercise where exercise_set.sessionid = session.id and exercise_set.exerciseid = exercise.id and exercise_set.sessionid = "+str(lastsession['id']));
+     exercises = cursor.fetchall();
+     df = pd.DataFrame.from_dict(exercises);
+     cols = ['time', 'name', 'resistance', 'reps', 'volume'];
+     df = df[cols];
+     df['volume'] = df['reps']*df['resistance'];
+     print df;
+     answer = raw_input("Hit [Enter] To Send Report> ");
+     if answer != "q":
+        body = df.to_html();
+        maildude(client, body, lastsession, filename)
+
+
+
+  elif cmd[0] == "checkout":
+
+     if len(cmd) < 2:
+        stdout.write("user>  ")
+        user = stdin.readline().rstrip('\n')
+     else: user = cmd[1]
+
+     if user=="last":
+
+         if len(cmd) < 3:
+            stdout.write("user>  ")
+            user = stdin.readline().rstrip('\n')
+         else: user = cmd[2]
+
+         client = getclientbyuser(user)
+         clientid = client['id']
+         cursor.execute(
+           "select * from session where clientid="+str(clientid),
+         )
+         sessions = cursor.fetchall()
+         if sessions:
+             session_no = len(sessions) - 1
+             lastsession = sessions[session_no]
+             sessionid=lastsession['id'];
+             note = lastsession['notes']
+
+         print("Time: ", lastsession['time'])
+         stdout.write("pay>   ");
+         payment = stdin.readline().rstrip("\n")
+         note=updatenote(note)
+
+         cursor.execute(
+           "update session set payment=%s, notes=%s where id="+str(sessionid), 
+           (payment, note)
+         )
+
+         db.commit();
+         break;
+
+
+     if len(cmd) < 3:
+        stdout.write("serv>  ")
+        service = stdin.readline().rstrip('\n')
+     else: service = cmd[2]
+     if len(cmd) < 4:
+        stdout.write("when>  ")
+        when = stdin.readline()
+     else: when = " ".join(cmd[3:]);
+
+     stdout.write("dur.>  ")
+     dura = stdin.readline().rstrip('\n')
+
+     
+     whenat = cal.parse(when)[0]
+     whenstr = time.strftime('%Y-%m-%d %H:%M:%S', whenat)
+     stdout.write("pay>   ");
+     payment = stdin.readline().rstrip("\n")
+     cursor.execute("select * from client where user='"+user+"'")
+     results = cursor.fetchall()
+     #code.interact(local=locals())
+     if results:
+       client = results[0]
+     else: 
+       print "No such client!";
+       break;
+     note=""
+     note=updatenote(note)
+     cursor.execute(
+       "insert into session (time, clientid, services, payment, notes) values (%s, %s, %s, %s, %s)", 
+       (whenstr, client['id'], service, payment, note)
+     )
+     db.commit();
+
+
+
+  elif cmd[0] == "workout":
+
+     if len(cmd) < 2:
+        stdout.write("user>  ")
+        user = stdin.readline().rstrip('\n')
+     else: user = cmd[1]
+
+     client = getclientbyuser(user);
+     session = lastsessionbyuser(user);
+
+     clientid=client['id'];
+     sessionid=session['id'];
+
+     ex = fex = ""
+     res = fres = 0;
+     reps = freps = 0;
+     while True:
+
+        print
+        stdout.write("exercise>  ")
+        ex = stdin.readline().rstrip('\n')
+        if ex=='': ex  = fex;
+        else:      fex = ex;
+        if ex == "q": break;
+
+        exercise = getexercisebyname(ex);
+        if exercise:
+          exerciseid = exercise['id'];
+        else:
+          print "No such exercise: "+ex
+          print "Add? "
+          answer = stdin.readline().rstrip('\n')
+          if answer=='y':
+             addexercise();
+          continue;
+
+        stdout.write("load>      ")
+        res = stdin.readline().rstrip('\n')
+        if res == '': res = fres;
+        else:         fres = res;
+        if is_int(res):
+          res = int(res);
+        else: 
+          "Load must be int!"
+          break;
+
+        stdout.write("reps>      ")
+        reps = stdin.readline().rstrip('\n')
+        if reps == '': reps = freps;
+        else:         freps = reps;
+        if is_int(reps):
+          reps = int(reps);
+        else: 
+          "Reps must be int!"
+          break;
+
+        tempo=None
+
+        present = cal.parse("now")[0]
+        present_str = time.strftime('%Y-%m-%d %H:%M:%S', present)
+
+        cursor.execute(
+          "insert into exercise_set (clientid,sessionid,exerciseid,resistance,reps,time) values (%s, %s, %s, %s, %s, %s)",
+          (clientid,sessionid,exerciseid,res,reps,present_str)
+        )
+        db.commit();
+
+     cursor.execute("select exercise_set.time,name,resistance,reps from exercise_set inner join session inner join exercise where exercise_set.sessionid = session.id and exercise_set.exerciseid = exercise.id");
+     results = cursor.fetchall();
+
+
+
+  elif cmd[0] == "history":
+     if len(cmd) < 2:
+        stdout.write("user>  ")
+        user = stdin.readline().rstrip('\n')
+     else: user = cmd[1]
+     cursor.execute("select * from client where user='"+user+"'")
+     clients = cursor.fetchall()
+     if clients: client = clients[0]
+     else: break;
+     clientid = client['id']
+     cursor.execute("select time, services, payment, notes from session where clientid='"+str(clientid)+"' order by time")
+     sessions = cursor.fetchall()
+     if sessions: 
+        listoutsessions(sessions)
+     else: print "No history"
+
+
+
+  elif cmd[0] == "schedule":
+
+     if len(cmd) < 2:
+        stdout.write("user>  ")
+        user = stdin.readline().rstrip('\n')
+     else: user = cmd[1]
+
+     if len(cmd) < 3:
+        stdout.write("serv>  ")
+        serv = stdin.readline().rstrip('\n')
+     else: serv = cmd[2]
+
+     if len(cmd) < 4:
+        stdout.write("when>  ")
+        when = stdin.readline().rstrip('\n')
+     else: when = " ".join(cmd[3:])
+
+     stdout.write("dur.>  ")
+     dura = stdin.readline().rstrip('\n')
+
+     client = getclientbyuser(user);
+     
+     phone    = client['phone']
+     email    = client['email']
+     local    = client['local']
+     clientid = client['id']
+
+     if local: where = "2790 Saint Johns Ave, Jacksonville FL, 32205"
+     elif serv=="hypnosis": where = "Skype"
+     else: where = "Jacksonville, FL"
+
+     whenat  = cal.parseDT(datetimeString=when, tzinfo=timezone("America/New_York"))[0]
+     howlong = cal.parseDT(datetimeString=dura, tzinfo=timezone("America/New_York"))[0]
+     now     = cal.parseDT(datetimeString="now", tzinfo=timezone("America/New_York"))[0]
+
+     delta = howlong-now;
+     end = whenat+delta;
+
+     start_str = time.strftime('%Y-%m-%dT%H:%M:%S-05:00', whenat.timetuple())
+     end_str = time.strftime('%Y-%m-%dT%H:%M:%S-05:00', end.timetuple())
+
+     desc = ""
+
+     if serv == "training":
+       summary = "Personal Training Session"
+       color = 10;
+       desc += """
+Be sure to eat complex carbohydrates and proteins about an hour beforehand. Remember to wear closed-toed shoes and non-abrasive athletic shorts or pants.  I have a shower available.
+"""
+
+     elif serv == "workout":
+       summary = "Workout Session"
+       color = 3;
+       desc += ""
+
+     elif serv == "massage":
+       summary = "Massage Session"
+       color = 11;
+       desc += """
+For massage, please be sure to shower beforehand. I have a shower available.
+"""
+
+     elif serv == "hypnosis":
+       summary = "Sports Hypnosis Session"
+       color = 9;
+       desc += """
+For your hypnosis appointment, please be sure you have not taken any psychoactive medications 24 hours prior.
+"""
+
+     else:
+       color = 3;
+       summary = "Session"
+
+
+     if serv != "workout":
+       desc += """
+Cash is preferred.  There is a 2.5% fee for debit processing.
+"""
+
+
+     store = file.Storage('/home/dominic/.credentials/token.json')
+     creds = store.get()
+     if not creds or creds.invalid:
+         flow = client.flow_from_clientsecrets('/home/dominic/.credentials/credentials.json', SCOPES)
+         creds = tools.run_flow(flow, store)
+     service = build('calendar', 'v3', http=creds.authorize(Http()))
+ 
+
+     #nowiso = datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
+     obj = { 
+             "creator": { 
+               "self": True,
+               "displayName": "Dominic",
+               "email": "the.dominicator@gmail.com",
+             },
+             "organizer": { 
+               "self": True,
+               "displayName": "Dominic",
+               "email": "the.dominicator@gmail.com",
+             },
+             "summary": summary,
+             "location": "2790 Saint Johns Ave, Jacksonville FL, 32205",
+             "attendees": [ 
+               {
+                 "email": email,
+               },
+             ],
+             "start": {
+               "timeZone": "America/New_York",
+               "dateTime": start_str,
+             },
+             "end": {
+               "timeZone": "America/New_York",
+               "dateTime": end_str,
+             },
+             "colorId": color,
+             "reminders": {
+               "overrides": [
+                 { "minutes": 75,   "method": "email", },
+                 { "minutes": 240,  "method": "email", },
+                 { "minutes": 600,  "method": "email", },
+                 { "minutes": 1440, "method": "email", },
+                 { "minutes": 4320, "method": "email", },
+               ],
+               "useDefault": False,
+             },
+             "description": desc,
+           }
+
+
+     if email == None: obj["attendees"] = [];
+     sendnotice = True;
+     if whenat < now:
+        obj["reminders"] = [];
+        sendnotice = False;
+
+
+     schedule_req = service.events().insert(calendarId='primary', body=obj,sendNotifications=sendnotice);
+     print(schedule_req);
+     if schedule_req:
+       result = schedule_req.execute();
+       if result:
+         print(result);
+       else: code.interact(local=locals());
+     else: code.interact(local=locals()); 
+
+     aday = timedelta(days=1);
+     dayafter = whenat+aday;
+     followup_str = time.strftime('%Y-%m-%d %H:%M:%S', dayafter.timetuple())
+
+     cursor.execute("update client set contact=%s where user=%s", (followup_str, user))
+
+     note = "";
+     note = updatenote(note);
+     db_start_str = time.strftime('%Y-%m-%d %H:%M:%S', whenat.timetuple())
+     cursor.execute(
+       "insert into session (time, clientid, services, notes) values (%s, %s, %s, %s)", 
+       (db_start_str, clientid, serv, note)
+     )
+
+     db.commit()
+
+
+
+  elif cmd[0] == "help":
+    smartlog.tip( " checkout - check out client")
+    smartlog.tip( " follow   - automatic following-up")
+    smartlog.tip( " help     - show help")
+    smartlog.tip( " info     - give client info")
+    smartlog.tip( " list     - list clients")
+    smartlog.tip( " new      - create new client or exercise")
+    smartlog.tip( " note     - update client note")
+    smartlog.tip( " query    - make custom query")
+    smartlog.tip( " report   - mail detailed exercise report")
+    smartlog.tip( " schedule - schedule client session")
+    smartlog.tip( " session  - list sessions")
+    smartlog.tip( " status   - give client status")
+    smartlog.tip( " tap      - update follow-up time")
+    smartlog.tip( " workout  - log sets of workout")
+
+
+
+  elif cmd[0] == "query":
+    clause = " ".join(cmd[1:])
+    cursor.execute(clause);
+    print cursor.fetchall();
+    db.commit()
+
+
+
+  elif cmd[0] == "mod":
+    user = cmd[1]
+    attribute = cmd[2]
+    value = " ".join(cmd[3:])
+    #cursor.execute("update client set %s=%d where user=%s", (attribute,int(value),user))
+    cursor.execute("update client set "+attribute+"=\""+value+"\" where user='"+user+"'");
+    db.commit()
+
+
+
+  elif cmd[0] == "quit":
+    break
+
+
+
+  else:
+    print("Incorrect command!")
+
+
+
+  if len(argv) > 1:
+    break
+
+
+#code.interact(local=locals())
