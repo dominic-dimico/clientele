@@ -44,7 +44,7 @@ from oauth2client import file, client, tools
 SCOPES = 'https://www.googleapis.com/auth/calendar'
 
 config = configparser.ConfigParser()
-config.read('/home/dominic/src/clientele/my.cfg')
+config.read('/home/dominic/src/clientele/clientele.cfg')
 
 db = connector.connect(
   user=config['main']['user'],
