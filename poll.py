@@ -38,19 +38,17 @@ def messages(client):
 def alert(clients):
     contact = toolbelt.converters.date("thirty seconds from now");
     for client in clients:
-        #phone = client['phone'];
-        #msg = "Hey dude!";
         message = messages(client);
         if message:
-           butterfly.text(client['phone'], message['body']);
+           #butterfly.text(client['phone'], message['body']);
            delivery = {
              'client_id': client['id'],
              'message_id': message['id'],
              'timestamp': str(toolbelt.converters.date('now'));
            };
-           deliverydb.insert(delivery);
+           #deliverydb.insert(delivery);
         client['contact'] = contact;
-        clientdb.update(client);
+        #clientdb.update(client);
 
 
 data = [(10, 'contact', 'thirty minutes ago', 'now', alert)] 
