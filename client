@@ -1,0 +1,178 @@
+from squirrel import squid
+from squirrel import squint
+import butterfly
+import configparser
+import toolbelt
+
+config = configparser.ConfigParser()
+config.read('examples/client/client.cfg')
+
+client_squid   = squid.Squid(config,'client');
+session_squid  = squid.Squid(config,'session');
+exercise_squid = squid.Squid(config,'exercise');
+message_squid = squid.Squid(config,'message');
+delivery_squid = squid.Squid(config,'delivery');
+schedule_squid = squid.Squid(config,'session');
+exset_squid    = squid.Squid(config,'exercise_set');
+
+squint.startup();
+
+
+
+class ExSetWindow(squint.EditWindow):
+
+      def duplicate_row(self):
+        maxid = self.getmaxid();
+        self.data = self.data[0:self.cursor.ypos] + [self.data[self.cursor.ypos], dict(self.data[self.cursor.ypos])] + self.data[self.cursor.ypos+1:];
+        self.data[self.cursor.ypos+1]['id'] = maxid;
+        self.data[self.cursor.ypos+1]['time'] = toolbelt.converters.date('now');
+        self.ymax += 1;
+        self.cursor.ymax += 1;
+        return True;
+
+      def getmaxid(self):
+          if self.data:
+             maxid = max([d['id'] for d in self.data]);
+             return maxid + 1;
+          else: 
+            self.squid.query("select max(id) from "+self.squid.table);
+            self.squid.data = self.squid.data[0];
+            maxid = self.squid.data['max(id)'];
+            del self.squid.data['max(id)'];
+            return maxid + 1;
+
+      def __init__(self, title, keybindings, squid):
+          squint.EditWindow.__init__(self, title, keybindings, squid);
+
+
+
+class WorkoutWindow(squint.NewWindow):
+
+      def insert(self):
+
+          # Get ID by client name
+          self.client_squid.query("select id from client where user='%s'" % (self.squid.data['client']));
+          clientid = self.client_squid.data[0]['id'];
+          self.squid.data['clientid'] = clientid;
+          del self.squid.data['client'];
+          sessionid = self.squid.getmaxid();
+          self.squid.data['id'] = sessionid;
+          self.squid.insert(self.squid.data);
+
+          exsetwin = ExSetWindow("exercises", None, self.exset_squid);
+          args = {}
+          args['sql'] = "select id,time,exerciseid,resistance,reps from exercise_set where sessionid=%s" % (self.squid.data['id'])
+          args['keys'] = ['id', 'clientid', 'sessionid', 'time', 'exerciseid', 'resistance', 'reps'];
+          args['fields'] = {
+            'id' : 'int', 
+            'clientid' : (client_squid, 'user'),
+            'sessionid' : (squid, 'time'),
+            'time' : 'datetime', 
+            'exerciseid' : (exercise_squid, 'name'),
+            'resistance' : 'int', 
+            'reps' : 'int'
+            };
+
+          args['data'] = [];
+          maxid = self.exset_squid.getmaxid();
+          args['data'].append(
+            {
+              'id':    maxid,
+              'clientid': clientid,
+              'sessionid': sessionid,
+              'time': toolbelt.converters.date('now'),
+              'exerciseid': 0,
+              'resistance': 0,
+              'reps': 0 
+            }
+          )
+
+          exsetwin.draw(args);
+
+      
+      def __init__(self, title, keybindings, session_squid, client_squid, exset_squid):
+          squint.NewWindow.__init__(self, title, keybindings, session_squid);
+          self.client_squid = client_squid;
+          self.exset_squid = exset_squid;
+          self.keys = ["client", "services", "time", "duration", "notes"];
+          self.squid.fields = {
+            'client'    : 'varchar(256)',
+            'services'  : 'varchar(256)',
+            'time'      : 'datetime',
+            'duration'  : 'datetime',
+            'notes'     : 'text',
+          }
+          self.reconstruct();
+          self.squid.data['services'] = "workout";
+          self.squid.data['time'] = "now";
+
+
+
+class ScheduleWindow(squint.NewWindow):
+
+
+      def insert(self):
+          self.client_squid.query("select id,email from client where user='%s'" % (self.squid.data['client']));
+          self.squid.data['clientid'] = self.client_squid.data[0]['id'];
+          del self.squid.data['client'];
+
+          email    = self.client_squid.data[0]['email'];
+          service  = self.squid.data['services'];
+          time     = self.squid.data['time'];
+          duration = self.squid.data['duration'];
+          butterfly.scheduler.schedule_client(time,duration,service,email);
+
+          self.squid.insert(self.squid.data);
+          notewin.write("Scheduled!");
+
+
+      def reconstruct(self):
+          squint.NewWindow.reconstruct(self);
+          self.keys = ["client", "services", "time", "duration", "notes"];
+          self.squid.fields = {
+            'client'    : 'varchar(256)',
+            'services'  : 'varchar(256)',
+            'time'      : 'datetime',
+            'duration'  : 'datetime',
+            'notes'     : 'text',
+          }
+
+
+      def __init__(self, title, keybindings, client_squid, session_squid):
+          squint.NewWindow.__init__(self, title, keybindings, session_squid);
+          self.client_squid = client_squid;
+
+
+
+x = squint.MainMenu([
+      squint.SubMenu("client", None, [
+          squint.NewWindow("new", None, client_squid),
+          squint.EditWindow("edit", None, client_squid),
+          squint.ViewWindow("view", None, client_squid),
+          ScheduleWindow("schedule", None, client_squid, schedule_squid)
+        ]),
+      squint.SubMenu("session", None, [
+          squint.NewWindow("new", None, session_squid),
+          squint.EditWindow("edit", None, session_squid),
+          squint.ViewWindow("view", None, session_squid),
+          WorkoutWindow("workout", None, session_squid, client_squid, exset_squid)
+      ]),
+      squint.SubMenu("exercise", None, [
+          squint.NewWindow("new", None, exercise_squid),
+          squint.EditWindow("edit", None, exercise_squid),
+          squint.ViewWindow("view", None, exercise_squid)
+      ])
+#      squint.SubMenu("message", None, [
+#          squint.NewWindow("new", None, message_squid),
+#          squint.EditWindow("edit", None, message_squid),
+#          squint.ViewWindow("view", None, message_squid)
+#      ]),
+#      squint.SubMenu("delivery", None, [
+#          squint.NewWindow("new", None, delivery_squid),
+#          squint.EditWindow("edit", None, delivery_squid),
+#          squint.ViewWindow("view", None, delivery_squid)
+#      ])
+    ])
+
+
+x.draw();
