@@ -118,7 +118,7 @@ def alert(clients):
 
 
 data = [
-  (6, 'contact', POLL_START, POLL_END, alert)
+  (900, 'contact', POLL_START, POLL_END, alert)
 ]
 
 

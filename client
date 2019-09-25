@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from squirrel import squid
 from squirrel import squint
 import butterfly
@@ -5,7 +7,7 @@ import configparser
 import toolbelt
 
 config = configparser.ConfigParser()
-config.read('examples/client/client.cfg')
+config.read('clientele.cfg')
 
 client_squid   = squid.Squid(config,'client');
 session_squid  = squid.Squid(config,'session');
@@ -15,11 +17,16 @@ delivery_squid = squid.Squid(config,'delivery');
 schedule_squid = squid.Squid(config,'session');
 exset_squid    = squid.Squid(config,'exercise_set');
 
-squint.startup();
+
+global cmdwin;
+global notewin;
+global tabwin;
+(cmdwin, notewin, tabwin) = squint.startup();
 
 
 
 class ExSetWindow(squint.EditWindow):
+
 
       def duplicate_row(self):
         maxid = self.getmaxid();
@@ -29,6 +36,7 @@ class ExSetWindow(squint.EditWindow):
         self.ymax += 1;
         self.cursor.ymax += 1;
         return True;
+
 
       def getmaxid(self):
           if self.data:
@@ -41,12 +49,14 @@ class ExSetWindow(squint.EditWindow):
             del self.squid.data['max(id)'];
             return maxid + 1;
 
+
       def __init__(self, title, keybindings, squid):
           squint.EditWindow.__init__(self, title, keybindings, squid);
 
 
 
 class WorkoutWindow(squint.NewWindow):
+
 
       def insert(self):
 
@@ -107,6 +117,38 @@ class WorkoutWindow(squint.NewWindow):
           self.squid.data['time'] = "now";
 
 
+class ClientEditWindow(squint.EditWindow):
+
+
+      def text_client(self):
+          number = self.data[self.cursor.ypos]["phone"];
+          if not number: return;
+          msg = cmdwin.read();
+          if self.comms.driver == None:
+             self.comms.voice_login();
+          self.comms.voice_text(number, msg);
+          self.data[self.cursor.ypos]['contact'] = toolbelt.converters.date('now');
+          self.squid.update(self.data[self.cursor.ypos]);
+
+
+      def email_client(self):
+          email = self.data[self.cursor.ypos]["email"];
+          if not email: return;
+          subject = cmdwin.read();
+          msg = "Hey dude. " 
+          msg = toolbelt.editors.vim(msg);
+          self.comms.email(email, subject, msg, None);
+          self.data[self.cursor.ypos]['contact'] = toolbelt.converters.date('now');
+          self.squid.update(self.data[self.cursor.ypos]);
+
+
+      def __init__(self, title, keybindings, squid):
+          squint.EditWindow.__init__(self, title, keybindings, squid);
+          self.keybindings.add('t', self.text_client, None);
+          self.keybindings.add('e', self.email_client, None);
+          self.comms = butterfly.comms.Comms();
+
+
 
 class ScheduleWindow(squint.NewWindow):
 
@@ -147,31 +189,21 @@ class ScheduleWindow(squint.NewWindow):
 x = squint.MainMenu([
       squint.SubMenu("client", None, [
           squint.NewWindow("new", None, client_squid),
-          squint.EditWindow("edit", None, client_squid),
+          #squint.NewWindow("import", None, client_squid),
+          ClientEditWindow("edit", None, client_squid),
           squint.ViewWindow("view", None, client_squid),
-          ScheduleWindow("schedule", None, client_squid, schedule_squid)
         ]),
       squint.SubMenu("session", None, [
-          squint.NewWindow("new", None, session_squid),
+          ScheduleWindow("schedule", None, client_squid, schedule_squid),
+          WorkoutWindow("workout", None, session_squid, client_squid, exset_squid),
           squint.EditWindow("edit", None, session_squid),
           squint.ViewWindow("view", None, session_squid),
-          WorkoutWindow("workout", None, session_squid, client_squid, exset_squid)
       ]),
       squint.SubMenu("exercise", None, [
           squint.NewWindow("new", None, exercise_squid),
           squint.EditWindow("edit", None, exercise_squid),
           squint.ViewWindow("view", None, exercise_squid)
       ])
-#      squint.SubMenu("message", None, [
-#          squint.NewWindow("new", None, message_squid),
-#          squint.EditWindow("edit", None, message_squid),
-#          squint.ViewWindow("view", None, message_squid)
-#      ]),
-#      squint.SubMenu("delivery", None, [
-#          squint.NewWindow("new", None, delivery_squid),
-#          squint.EditWindow("edit", None, delivery_squid),
-#          squint.ViewWindow("view", None, delivery_squid)
-#      ])
     ])
 
 
