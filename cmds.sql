@@ -62,3 +62,59 @@ create table session (
 ); 
 
 
+
+# media: can be 'email', 'text', 'skype', 'any'
+create table message (
+  id integer primary key not null auto_increment,
+  media varchar(64),
+  subject varchar(64),
+  body text,
+  attachments text,
+  tags text
+); 
+
+
+# timestamp can be set for future
+create table delivery (
+  id integer primary key not null auto_increment,
+  timestamp datetime,
+  client_id integer,
+  message_id integer,
+  foreign key (client_id) references client(id),
+  foreign key (message_id) references message(id)
+); 
+
+
+create table fooditem (
+  id integer primary key not null auto_increment,
+  name varchar(256),
+  servingsize int,
+  calories int,
+  fat int,
+  carbs int,
+  protein int
+);
+
+
+create table foodsummary (
+  id integer primary key not null auto_increment,
+  name varchar(256),
+  date datetime,
+  calories int,
+  fat int,
+  carbs int,
+  protein int,
+  notes text
+);
+
+
+create table foodconsumption (
+  id integer primary key not null auto_increment,
+  date datetime,
+  servings float,
+  notes text,
+  clientid int,
+  fooditemid int,
+  foreign key (clientid) references client(id),
+  foreign key (fooditemid) references fooditem(id)
+);
