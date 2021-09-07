@@ -124,7 +124,7 @@ def followup_prompt(client):
 def maildude(client, body, session, attach):
 
     gmail_user = 'the.dominicator@gmail.com'
-    gmail_password = '***REMOVED***'
+    gmail_password = 'at0ng0ne_at0ng0ne'
 
     from_addr  = gmail_user
     to_addr    = client['email']
@@ -536,7 +536,7 @@ while True:
 
     password = driver.find_element_by_id("password");
     passwordbox = password.find_element_by_tag_name("input");
-    passwordbox.send_keys("***REMOVED***");
+    passwordbox.send_keys("at0ng0no_at0ng0ni");
     passwordbox.send_keys(Keys.ENTER);
     sleep(3);
 
