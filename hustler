@@ -44,6 +44,8 @@ def messages(client):
     pprint(tokens);
 
     # Obtain messages which are inviable due to last delivery date
+    # regardless of recipient.  This is to avoid tripping the spam
+    # filter.
     sql = "select * from delivery order by timestamp desc";
     deliverydb.query(sql);
     inviable = [];
@@ -53,7 +55,7 @@ def messages(client):
 
 
     # Obtain messages which are inviable due to having been sent to the
-    # client already
+    # client already.
     sql = "select * from delivery where client_id=%s order by timestamp desc" % (client_id);
     deliverydb.query(sql);
     if deliverydb.data:
@@ -74,7 +76,8 @@ def messages(client):
     if len(viable) < 1:
        return None;
 
-    # Ideally, sort by specificity, then select most specific message
+    # TODO: Ideally, sort by specificity, then select most specific 
+    # message
     index = toolbelt.randoms.random_index(len(viable));
     message = viable[index];
     #pprint(message);

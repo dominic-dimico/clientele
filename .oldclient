@@ -18,7 +18,7 @@ import random
 import configparser
 
 from blessings  import Terminal
-from mysql import connector
+from MySQLdb import connect
 from subprocess import call
 from textwrap   import wrap
 from sys        import stdin, stdout, argv
@@ -29,10 +29,10 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
 from matplotlib.backends.backend_pdf import PdfPages
-from email.MIMEMultipart import MIMEMultipart
-from email.MIMEBase import MIMEBase
-from email.MIMEText import MIMEText
-from email import Encoders
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
 from pytz import timezone
 from googleapiclient.discovery import build
 from httplib2 import Http
@@ -41,12 +41,14 @@ from oauth2client import file, client, tools
 
 # TODO: integration with calev?
 
+smartlog = smartlog.Smartlog();
+
 SCOPES = 'https://www.googleapis.com/auth/calendar'
 
 config = configparser.ConfigParser()
 config.read('/home/dominic/src/clientele/clientele.cfg')
 
-db = connector.connect(
+db = connect(
   user=config['main']['user'],
   password=config['main']['password'],
   host=config['main']['host'],
@@ -69,13 +71,9 @@ client_headings = [
     'phone', 
     'email', 
     'skype', 
-    'services', 
+    'tags', 
     'contact', 
     'sex', 
-    'friendly', 
-    'local', 
-    'regular', 
-    'followup', 
     'note' 
 ]
 
@@ -83,12 +81,12 @@ client_headings = [
 
 
 def incolor(color, msg):
-  if color == "red": msg = t.red(msg)
+  if color == "red":      msg = t.red(msg)
   elif color == "yellow": msg = t.bold_yellow(msg)
-  elif color == "green": msg = t.green(msg)
-  elif color == "blue": msg = t.blue(msg)
+  elif color == "green":  msg = t.green(msg)
+  elif color == "blue":   msg = t.blue(msg)
   elif color == "purple": msg = t.magenta(msg)
-  elif color == "black": msg = t.dim_white(msg)
+  elif color == "black":  msg = t.dim_white(msg)
   return msg
 
 
@@ -96,9 +94,13 @@ def incolor(color, msg):
 
 def random_date(start, end):
     delta = end - start
-    random_day = random.randrange(delta.days)
-    #random.jumpahead(1);
-    secs = random_day * 24 * 60 * 60;
+    if delta.days > 0:
+       random_day = random.randrange(delta.days)
+    else: random_day = 0;
+    if delta.seconds > 0:
+       random_sec = random.randrange(delta.seconds);
+    else: random_sec = random.randrange(24*60*60);
+    secs = random_day * 24 * 60 * 60 + random_sec;
     return start + timedelta(seconds=secs)
 
 
@@ -142,7 +144,7 @@ def maildude(client, body, session, attach):
     if attach:
        msg['Subject'] = "Progress Report for "+session['time'].isoformat();
     else:
-       msg['Subject'] = client['services'].capitalize();
+       msg['Subject'] = client['tags'].capitalize();
 
     if attach:
        part = MIMEBase('application', "octet-stream")
@@ -168,7 +170,7 @@ def maildude(client, body, session, attach):
 def printinfobyuser(user):
     client = getclientbyuser(user)
     if client:
-        print
+        print("\n");
         printinfobyclient(client);
 
 
@@ -177,8 +179,8 @@ def printinfobyuser(user):
 def printinfobyclient(client):
     for i in range(len(client)):
         if client_headings[i] != "note":
-           print "{:<20} : {}".format(client_headings[i], client[client_headings[i]])
-    print "\n",client['note']
+           print("{:<20} : {}".format(client_headings[i], client[client_headings[i]]))
+    print("\n",client['note'])
 
 
 
@@ -263,21 +265,24 @@ def lastsessionbyclient(client):
 
 
 def colorof(client):
-    if 'hypnosis' in client['services']: color="blue";
-    elif 'training' in client['services']: color="green";
-    elif 'massage' in client['services']: color="red";
+    if not client['tags']: return "yellow";
+    if 'hypnosis'   in client['tags']: color="blue";
+    elif 'training' in client['tags']: color="green";
+    elif 'massage'  in client['tags']: color="red";
     else: color="yellow";
     return color;
     
 
+
 def shortlist(clients):
     for client in clients:
         color = colorof(client);
-        print "{:<6}: {:<10} {:<6}: {:<20}".format(
+        print("{:<6}: {:<10}".format(
           incolor(color, "user: "),    client['user'],
-          incolor(color, "contact: "), client['contact'].ctime(),
-        );
-    print
+          #incolor(color, "contact: "), client['contact'].ctime(),
+        ));
+    print("\n");
+
 
 
 def listout(clients):
@@ -299,32 +304,26 @@ def listout(clients):
         stdout.write('  {:<}\n'.format(client['email']));
 
         stdout.write(incolor(color, "Serv:   "));
-        stdout.write("{:<35}".format(client['services']));
+        stdout.write("{:<35}".format(client['tags']));
         stdout.write(incolor(color, "Skype:  "));
         stdout.write('  {:<}\n'.format(client['skype']));
 
         stdout.write(incolor(color, "Tap:    "));
         stdout.write("{:<35}".format(client['contact'].ctime()));
         stdout.write(incolor(color, "Stats:  "));
-        stdout.write('  {}{}{}{}\n'.format(
-          client['regular'], 
-          client['local'], 
-          client['friendly'], 
-          client['followup']
-        ));
-
-        print 
+        
+        print("\n"); 
 
 
 
 
 def listoutsessions(sessions):
     for session in sessions:
-        print '-'*80;
-        print 'Time: {}'.format(session['time'])
-        print 'Serv: {}'.format(session['services'])
-        print 'Pay:  {}'.format(session['payment'])
-        print 'Note: \n\n{}'.format(session['notes'])
+        print('-'*80);
+        print('Time: {}'.format(session['time']))
+        print('Serv: {}'.format(session['tags']))
+        print('Pay:  {}'.format(session['payment']))
+        print('Note: \n\n{}'.format(session['notes']))
 
 
 
@@ -354,8 +353,10 @@ def updatenote(note):
         return note
 
 
+
 def schedule_user():
     pass
+
 
 
 user = ""
@@ -401,22 +402,16 @@ while True:
     if skype == '': skype = None
 
     stdout.write("servs> ")
-    services = stdin.readline().rstrip('\n')
-    if services == '': services = None
-
-    stdout.write("local> ")
-    local = stdin.readline().rstrip('\n')
-    if local == '': local = None
-    elif local == '1': local = 1;
-    else: local = 0;
+    tags = stdin.readline().rstrip('\n')
+    if tags == '': tags = None
 
     sex = 0;
 
     smartlog.log("Inserting client");
     #try:
     cursor.execute(
-          'insert into client (user, name, dob, phone, email, skype, services, contact, sex, local, friendly, regular, followup) values (%s, %s, %s, %s, %s, %s, %s, current_timestamp, %s, %s, %s, %s, %s)', 
-          (user, name, dob, phone, email, skype, services, sex, local, 0, 0, 1)
+          'insert into client (user, name, dob, phone, email, skype, tags, contact, sex) values (%s, %s, %s, %s, %s, %s, %s, current_timestamp, %s)', 
+          (user, name, dob, phone, email, skype, tags, sex)
     )  
     db.commit()
     #smartlog.ok();
@@ -442,7 +437,7 @@ while True:
         smartlog.ok();
     except:
         smartlog.fail();
-    print
+    print("\n");
     if len(cmd) >= 2:
        if cmd[1] == "short":
          shortlist(clients);
@@ -470,15 +465,15 @@ while True:
             start = cal.parseDT("now")[0];
             end   = cal.parseDT(when)[0]
             cursor.execute("select * from client");
-	    clients = cursor.fetchall();
-	    for client in clients:
-	        if client['contact'] < start:
-		   tapdate = random_date(start, end);
+            clients = cursor.fetchall();
+            for client in clients:
+                #if client['contact'] < start:
+                   tapdate = random_date(start, end);
                    tapstr  = tapdate.strftime('%Y-%m-%d %H:%M:%S')
-		   user = client['user'];
-		   print "{:<20}: {}".format(user, tapstr);
+                   user = client['user'];
+                   print("{:<20}: {}".format(user, tapstr));
                    tapuser(user, tapstr); 
-          else: print "Error: require window"
+          else: print("Error: require window")
       else:
           if len(cmd) < 2:
             stdout.write("user>  ")
@@ -607,7 +602,7 @@ while True:
 
 
   elif (cmd[0] == "status"):
-      print "Not yet implemented; should print current status of client and ask to update"
+      print("Not yet implemented; should print current status of client and ask to update")
 
 
 
@@ -636,19 +631,19 @@ while True:
      filename = "/home/dominic/box/"+user+'.pdf'
      pp = PdfPages(filename)
      for ex, dat in exs:
-	 fig = plt.figure();
+         fig = plt.figure();
          plt.title(ex);
-	 plt.xlabel("Time");
-	 plt.ylabel("Volume");
+         plt.xlabel("Time");
+         plt.ylabel("Volume");
          times = dat['time'];
-	 vols  = dat['vol'];
-	 plt.plot(times, vols, "o");
-	 #plt.show();
-	 pp.savefig(fig);
+         vols  = dat['vol'];
+         plt.plot(times, vols, "o");
+         #plt.show();
+         pp.savefig(fig);
      pp.close();
 
      headings = ['session', 'time', 'name', 'load', 'reps'];
-     print tabulate(results);
+     print(tabulate(results));
     
      lastsession = lastsessionbyuser(user);
      cursor.execute("select exercise_set.time,name,resistance,reps from exercise_set inner join session inner join exercise where exercise_set.sessionid = session.id and exercise_set.exerciseid = exercise.id and exercise_set.sessionid = "+str(lastsession['id']));
@@ -657,7 +652,7 @@ while True:
      cols = ['time', 'name', 'resistance', 'reps', 'volume'];
      df = df[cols];
      df['volume'] = df['reps']*df['resistance'];
-     print df;
+     print(df);
      answer = raw_input("Hit [Enter] To Send Report> ");
      if answer != "q":
         body = df.to_html();
@@ -707,8 +702,8 @@ while True:
 
      if len(cmd) < 3:
         stdout.write("serv>  ")
-        service = stdin.readline().rstrip('\n')
-     else: service = cmd[2]
+        tag = stdin.readline().rstrip('\n')
+     else: tag = cmd[2]
      if len(cmd) < 4:
         stdout.write("when>  ")
         when = stdin.readline()
@@ -728,13 +723,13 @@ while True:
      if results:
        client = results[0]
      else: 
-       print "No such client!";
+       print("No such client!");
        break;
      note=""
      note=updatenote(note)
      cursor.execute(
-       "insert into session (time, clientid, services, payment, notes) values (%s, %s, %s, %s, %s)", 
-       (whenstr, client['id'], service, payment, note)
+       "insert into session (time, clientid, tags, payment, notes) values (%s, %s, %s, %s, %s)", 
+       (whenstr, client['id'], tag, payment, note)
      )
      db.commit();
 
@@ -758,7 +753,7 @@ while True:
      reps = freps = 0;
      while True:
 
-        print
+        print("\n");
         stdout.write("exercise>  ")
         ex = stdin.readline().rstrip('\n')
         if ex=='': ex  = fex;
@@ -769,8 +764,8 @@ while True:
         if exercise:
           exerciseid = exercise['id'];
         else:
-          print "No such exercise: "+ex
-          print "Add? "
+          print("No such exercise: "+ex)
+          print("Add? ")
           answer = stdin.readline().rstrip('\n')
           if answer=='y':
              addexercise();
@@ -822,11 +817,11 @@ while True:
      if clients: client = clients[0]
      else: break;
      clientid = client['id']
-     cursor.execute("select time, services, payment, notes from session where clientid='"+str(clientid)+"' order by time")
+     cursor.execute("select time, tags, payment, notes from session where clientid='"+str(clientid)+"' order by time")
      sessions = cursor.fetchall()
      if sessions: 
         listoutsessions(sessions)
-     else: print "No history"
+     else: print("No history")
 
 
 
@@ -854,12 +849,11 @@ while True:
      
      phone    = client['phone']
      email    = client['email']
-     local    = client['local']
+     local    = 1;
      clientid = client['id']
 
-     if local: where = "2790 Saint Johns Ave, Jacksonville FL, 32205"
-     elif serv=="hypnosis": where = "Skype"
-     else: where = "Jacksonville, FL"
+     if serv=="hypnosis": where = "Skype"
+     else: where = "2790 Saint Johns Ave, Jacksonville FL, 32205"
 
      whenat  = cal.parseDT(datetimeString=when, tzinfo=timezone("America/New_York"))[0]
      howlong = cal.parseDT(datetimeString=dura, tzinfo=timezone("America/New_York"))[0]
@@ -889,25 +883,18 @@ Be sure to eat complex carbohydrates and proteins about an hour beforehand. Reme
        summary = "Massage Session"
        color = 11;
        desc += """
-For massage, please be sure to shower beforehand. I have a shower available.
+For massage, please be sure to shower beforehand. I have a shower available.  Cash is preferred.  There is a 2.5% fee for debit processing.
 """
 
      elif serv == "hypnosis":
        summary = "Sports Hypnosis Session"
        color = 9;
        desc += """
-For your hypnosis appointment, please be sure you have not taken any psychoactive medications 24 hours prior.
 """
 
      else:
        color = 3;
-       summary = "Session"
-
-
-     if serv != "workout":
-       desc += """
-Cash is preferred.  There is a 2.5% fee for debit processing.
-"""
+       summary = serv;
 
 
      store = file.Storage('/home/dominic/.credentials/token.json')
@@ -915,7 +902,7 @@ Cash is preferred.  There is a 2.5% fee for debit processing.
      if not creds or creds.invalid:
          flow = client.flow_from_clientsecrets('/home/dominic/.credentials/credentials.json', SCOPES)
          creds = tools.run_flow(flow, store)
-     service = build('calendar', 'v3', http=creds.authorize(Http()))
+     tag = build('calendar', 'v3', http=creds.authorize(Http()))
  
 
      #nowiso = datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
@@ -967,7 +954,7 @@ Cash is preferred.  There is a 2.5% fee for debit processing.
         sendnotice = False;
 
 
-     schedule_req = service.events().insert(calendarId='primary', body=obj,sendNotifications=sendnotice);
+     schedule_req = tag.events().insert(calendarId='primary', body=obj,sendNotifications=sendnotice);
      print(schedule_req);
      if schedule_req:
        result = schedule_req.execute();
@@ -1015,7 +1002,7 @@ Cash is preferred.  There is a 2.5% fee for debit processing.
   elif cmd[0] == "query":
     clause = " ".join(cmd[1:])
     cursor.execute(clause);
-    print cursor.fetchall();
+    print(cursor.fetchall())
     db.commit()
 
 

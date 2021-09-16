@@ -7,7 +7,7 @@ import configparser
 import toolbelt
 
 config = configparser.ConfigParser()
-config.read('clientele.cfg')
+config.read('/home/dominic/src/clientele/clientele.cfg')
 
 client_squid   = squid.Squid(config,'client');
 session_squid  = squid.Squid(config,'session');
@@ -51,7 +51,10 @@ class ExSetWindow(squint.EditWindow):
 
 
       def __init__(self, title, keybindings, squid):
+          #self.hidden = ["clientid", "sessionid", "id"];
           squint.EditWindow.__init__(self, title, keybindings, squid);
+          self.keys = ['exerciseid', 'resistance', 'reps', 'time']
+          #self.keys = ['clientid', 'sessionid', 'id', 'exerciseid', 'resistance', 'reps', 'time']
 
 
 
@@ -61,13 +64,18 @@ class WorkoutWindow(squint.NewWindow):
       def insert(self):
 
           # Get ID by client name
-          self.client_squid.query("select id from client where user='%s'" % (self.squid.data['client']));
+          self.client_squid.query("select id,email from client where user='%s'" % (self.squid.data['client']));
           clientid = self.client_squid.data[0]['id'];
+          email    = self.client_squid.data[0]['email'];
           self.squid.data['clientid'] = clientid;
           del self.squid.data['client'];
           sessionid = self.squid.getmaxid();
           self.squid.data['id'] = sessionid;
           self.squid.insert(self.squid.data);
+          service  = self.squid.data['services'];
+          time     = self.squid.data['time'];
+          duration = self.squid.data['duration'];
+          butterfly.scheduler.schedule_client(time,duration,service,email);
 
           exsetwin = ExSetWindow("exercises", None, self.exset_squid);
           args = {}
@@ -112,9 +120,10 @@ class WorkoutWindow(squint.NewWindow):
             'duration'  : 'datetime',
             'notes'     : 'text',
           }
-          self.reconstruct();
           self.squid.data['services'] = "workout";
           self.squid.data['time'] = "now";
+          self.maxvallen = 20;
+          self.reconstruct();
 
 
 class ClientEditWindow(squint.EditWindow):
@@ -185,26 +194,44 @@ class ScheduleWindow(squint.NewWindow):
           self.client_squid = client_squid;
 
 
-
 x = squint.MainMenu([
-      squint.SubMenu("client", None, [
-          squint.NewWindow("new", None, client_squid),
-          #squint.NewWindow("import", None, client_squid),
-          ClientEditWindow("edit", None, client_squid),
-          squint.ViewWindow("view", None, client_squid),
-        ]),
-      squint.SubMenu("session", None, [
-          ScheduleWindow("schedule", None, client_squid, schedule_squid),
+      squint.SubMenu("new", None, [
+          squint.NewWindow("client", None, client_squid),
+          ScheduleWindow("session", None, client_squid, schedule_squid),
+          squint.NewWindow("exercise", None, exercise_squid),
           WorkoutWindow("workout", None, session_squid, client_squid, exset_squid),
-          squint.EditWindow("edit", None, session_squid),
-          squint.ViewWindow("view", None, session_squid),
+        ]),
+      squint.SubMenu("edit", None, [
+          ClientEditWindow("client", None, client_squid),
+          squint.EditWindow("session", None, session_squid),
+          squint.EditWindow("exercise", None, exercise_squid),
       ]),
-      squint.SubMenu("exercise", None, [
-          squint.NewWindow("new", None, exercise_squid),
-          squint.EditWindow("edit", None, exercise_squid),
-          squint.ViewWindow("view", None, exercise_squid)
+      squint.SubMenu("view", None, [
+          squint.ViewWindow("client", None, client_squid),
+          squint.ViewWindow("session", None, session_squid),
+          squint.ViewWindow("exercise", None, exercise_squid)
       ])
     ])
 
-
 x.draw();
+
+
+#x = squint.MainMenu([
+#      squint.SubMenu("client", None, [
+#          squint.NewWindow("new", None, client_squid),
+#          #squint.NewWindow("import", None, client_squid),
+#          ClientEditWindow("edit", None, client_squid),
+#          squint.ViewWindow("view", None, client_squid),
+#        ]),
+#      squint.SubMenu("session", None, [
+#          ScheduleWindow("schedule", None, client_squid, schedule_squid),
+#          WorkoutWindow("workout", None, session_squid, client_squid, exset_squid),
+#          squint.EditWindow("edit", None, session_squid),
+#          squint.ViewWindow("view", None, session_squid),
+#      ]),
+#      squint.SubMenu("exercise", None, [
+#          squint.NewWindow("new", None, exercise_squid),
+#          squint.EditWindow("edit", None, exercise_squid),
+#          squint.ViewWindow("view", None, exercise_squid)
+#      ])
+#    ])
