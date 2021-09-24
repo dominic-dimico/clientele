@@ -4,5 +4,5 @@ import clientele
 import squirrel
 import sys
 
-c = clientele.clientcli.ClientInterpreter();
+c = clientele.client.ClientInterpreter();
 c.run(sys.argv[1:]);
