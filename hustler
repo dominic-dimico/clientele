@@ -55,7 +55,7 @@ def messages(client):
 
 
     # Obtain messages which are inviable due to having been sent to the
-    # client already.
+    # client already
     sql = "select * from delivery where client_id=%s order by timestamp desc" % (client_id);
     deliverydb.query(sql);
     if deliverydb.data:

@@ -7,7 +7,7 @@ import configparser
 import toolbelt
 
 config = configparser.ConfigParser()
-config.read('/home/dominic/src/clientele/clientele.cfg')
+config.read('/home/dominic/.config/clientele/clientele.cfg')
 
 client_squid   = squid.Squid(config,'client');
 session_squid  = squid.Squid(config,'session');
@@ -216,22 +216,25 @@ x = squint.MainMenu([
 x.draw();
 
 
-#x = squint.MainMenu([
-#      squint.SubMenu("client", None, [
-#          squint.NewWindow("new", None, client_squid),
-#          #squint.NewWindow("import", None, client_squid),
-#          ClientEditWindow("edit", None, client_squid),
-#          squint.ViewWindow("view", None, client_squid),
-#        ]),
-#      squint.SubMenu("session", None, [
-#          ScheduleWindow("schedule", None, client_squid, schedule_squid),
-#          WorkoutWindow("workout", None, session_squid, client_squid, exset_squid),
-#          squint.EditWindow("edit", None, session_squid),
-#          squint.ViewWindow("view", None, session_squid),
-#      ]),
-#      squint.SubMenu("exercise", None, [
-#          squint.NewWindow("new", None, exercise_squid),
-#          squint.EditWindow("edit", None, exercise_squid),
-#          squint.ViewWindow("view", None, exercise_squid)
-#      ])
-#    ])
+x = squint.MainMenu([
+      squint.SubMenu("client", None, [
+          squint.NewWindow("new", None, client_squid),
+          #squint.NewWindow("import", None, client_squid),
+          ClientEditWindow("edit", None, client_squid),
+          squint.ViewWindow("view", None, client_squid),
+        ]),
+      squint.SubMenu("session", None, [
+          ScheduleWindow("schedule", None, client_squid, schedule_squid),
+          WorkoutWindow("workout", None, session_squid, client_squid, exset_squid),
+          squint.EditWindow("edit", None, session_squid),
+          squint.ViewWindow("view", None, session_squid),
+      ]),
+      squint.SubMenu("exercise", None, [
+          squint.NewWindow("new", None, exercise_squid),
+          squint.EditWindow("edit", None, exercise_squid),
+          squint.ViewWindow("view", None, exercise_squid)
+      ])
+    ])
+
+
+x.draw();
