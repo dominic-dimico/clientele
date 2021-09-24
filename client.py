@@ -58,7 +58,7 @@ class ClienteleSquid(squirrel.squid.Squid):
           configs = {};
           configs = configparser.ConfigParser()
           configs.read(
-              '/home/dominic/src/clientele/clientele.cfg'
+              '/home/dominic/.config/clientele/clientele.cfg'
           )
           self.config = configs['main'];
           self.log = smartlog.Smartlog();
