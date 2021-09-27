@@ -75,9 +75,9 @@ class ClientSquid(ClienteleSquid):
       self.form = {
         'search' : { 'defaults' : ['user', 'phone', 'email', 'name'], },
         'new'    : { 'fields' : ['user',  'name',  'phone', 'email', 'skype', 'tags', 'note'], },
-        'edit'   : { 'fields' : ['id', 'user',  'name',  'phone', 'email', 'skype', 'tags', 'note'], },
-        'list'   : { 'fields' : ['id', 'user', 'nickname', 'name', 'phone', 'email', 'skype', 'tags', 'contact'], },
-        'view'   : { 'fields' : ['id', 'user', 'name', 'phone', 'freq', 'email', 'tags', 'skype', 'contact', 'note'], },
+        'edit'   : { 'fields' : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'note'], },
+        'list'   : { 'fields' : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'contact'], },
+        'view'   : { 'fields' : ['id', 'user', 'name', 'phone', 'freq',  'email', 'tags', 'skype', 'contact', 'note'], },
         'join'   : [
             {
               'type'       : 'many',
