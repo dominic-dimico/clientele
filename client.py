@@ -3,7 +3,7 @@ import toolbelt
 import configparser
 import smartlog
 import butterfly
-
+format_ = format
 
 
 # Clientele interpreter
@@ -72,11 +72,14 @@ class ClientSquid(ClienteleSquid):
 
   def __init__(self):
       ClienteleSquid.__init__(self);
-      self.form = {
+      self.format = {
         'search' : { 'defaults' : ['user', 'phone', 'email', 'name'], },
         'new'    : { 'fields' : ['user',  'name',  'phone', 'email', 'skype', 'tags', 'note'], },
         'edit'   : { 'fields' : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'note'], },
-        'list'   : { 'fields' : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'contact'], },
+        'list'   : { 
+          'fields' : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'contact'], 
+          'order'  : 'order by user',
+        },
         'view'   : { 'fields' : ['id', 'user', 'name', 'phone', 'freq',  'email', 'tags', 'skype', 'contact', 'note'], },
         'join'   : [
             {
@@ -132,7 +135,7 @@ class ExerciseSquid(ClienteleSquid):
   def __init__(self):
       ClienteleSquid.__init__(self);
       self.table = 'exercise'
-      self.form = {
+      self.format = {
         'search' : {
            'defaults' : ['name',]
         },
@@ -166,7 +169,7 @@ class ExerciseSetSquid(ClienteleSquid):
       ClienteleSquid.__init__(self);
       self.table = 'exercise_set';
       self.aliases = ['set'];
-      self.form = {
+      self.format = {
         'search' : {
            'defaults' : ['session.time', 'client.user', 'exercise_set.time'],
            'order'    : 'order by exercise_set.time desc',
@@ -226,7 +229,7 @@ class SessionSquid(ClienteleSquid):
   def __init__(self):
       ClienteleSquid.__init__(self);
       self.table = 'session';
-      self.form = {
+      self.format = {
         'search' : {
            'defaults' : ['session.id', 'client.user', 'session.time'],
            'order'    : 'order by session.time desc',
@@ -335,7 +338,7 @@ class SessionSquid(ClienteleSquid):
 
 class IngredientSquid(ClienteleSquid):
   table = 'ingredient'
-  form = {
+  format = {
     'search' : {
         'defaults' : ['name'],
     },
@@ -368,7 +371,7 @@ class RecipeSquid(ClienteleSquid):
   def __init__(self):
       ClienteleSquid.__init__(self);
       self.table = 'recipe'
-      self.form = {
+      self.format = {
         'search' : {
             'defaults' : ['name'],
         },
@@ -446,7 +449,7 @@ class SnacklogSquid(ClienteleSquid):
       ClienteleSquid.__init__(self);
       self.table = 'snacklog'
       self.aliases = ['log'];
-      self.form = {
+      self.format = {
         'search' : {
            'defaults': ['date', 'client.user'],
            'order'   : 'order by date desc',
@@ -557,7 +560,7 @@ class SnacklogSquid(ClienteleSquid):
 
 class SnacklogIngredientSquid(ClienteleSquid):
   table = 'snacklog_ingredient'
-  form = {
+  format = {
     'new' : {
         'fields' : ['ingredientid', 'snacklogid'],
         'preset' : {
@@ -605,7 +608,7 @@ class SnacklogIngredientSquid(ClienteleSquid):
 
 class SnacklogRecipeSquid(ClienteleSquid):
   table = 'snacklog_recipe'
-  form = {
+  format = {
     'new' : {
         'fields' : ['recipeid', 'snacklogid'],
         'preset' : {
@@ -652,7 +655,7 @@ class SnacklogRecipeSquid(ClienteleSquid):
 
 class RecipeIngredientSquid(ClienteleSquid):
   table = 'recipe_ingredient'
-  form = {
+  format = {
     'new' : {
         'fields' : ['ingredientid', 'recipeid'],
         'preset' : {
