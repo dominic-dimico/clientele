@@ -13,11 +13,10 @@ class ClientInterpreter(squirrel.squish.SquishInterpreter):
 
     def __init__(self):
         super().__init__();
-        self.objects = ['client', 'set', 'session', 'exercise', 'recipe', 'ingredient', 'snacklog']
+        self.objects = ['client', 'set', 'session', 'exercise', 'food', 'ingredient', 'snack']
         self.initialize_squids();
         self.initialize_autocomplete();
         super().initialize_autocomplete();
-
 
     def initialize_autocomplete(self):
         """ Autocomplete and argspect initialization
@@ -25,7 +24,6 @@ class ClientInterpreter(squirrel.squish.SquishInterpreter):
             First do commands, objects, fields, then
             particular values of particular fields
         """ 
-
         # Fields of particular tables
         self.ts = {
           'client'     : ['user'],
@@ -42,7 +40,7 @@ class ClientInterpreter(squirrel.squish.SquishInterpreter):
         self.log.info("syntax: [command] ...\n");
         super().help();
         objects = [
-          'client', 'exercise', 'set', 'session', 'snacklog', 'recipe', 'ingredient'
+          'client', 'exercise', 'set', 'session', 'snack', 'food', 'ingredient'
         ]
         self.log.outfile.write("\n");
         self.log.info("objects:");
@@ -53,7 +51,6 @@ class ClientInterpreter(squirrel.squish.SquishInterpreter):
 
 
 class ClienteleSquid(squirrel.squid.Squid):
-
       def __init__(self):
           configs = {};
           configs = configparser.ConfigParser()
@@ -67,21 +64,15 @@ class ClienteleSquid(squirrel.squid.Squid):
 
 # more search options, such as 'like' 
 class ClientSquid(ClienteleSquid):
-
   table = 'client';
-
   def __init__(self):
       ClienteleSquid.__init__(self);
       self.format = {
-        'search' : { 'defaults' : ['user', 'phone', 'email', 'name'], },
-        'new'    : { 'fields' : ['user',  'name',  'phone', 'email', 'skype', 'tags', 'note'], },
-        'edit'   : { 'fields' : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'note'], },
-        'list'   : { 
-          'fields' : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'contact'], 
+        'fields'  : ['id', 'user', 'name', 'phone', 'email', 'skype', 'tags', 'note'],
+        'list'    : { 
           'order'  : 'order by user',
         },
-        'view'   : { 'fields' : ['id', 'user', 'name', 'phone', 'freq',  'email', 'tags', 'skype', 'contact', 'note'], },
-        'join'   : [
+        'join'    : [
             {
               'type'       : 'many',
               'conditions' : [{
@@ -96,7 +87,7 @@ class ClientSquid(ClienteleSquid):
                     'fields' : [
                          'session.id', 
                          'session.time', 
-                         'session.services', 
+                         'session.tags', 
                          'session.payment', 
                          'session.notes', 
                     ],
@@ -104,9 +95,7 @@ class ClientSquid(ClienteleSquid):
             },
         ],
       };
-
-
-
+      self.configure();
 
   def randomize_contact(self):  
       self.query('select * from client'); 
@@ -160,8 +149,7 @@ class ExerciseSquid(ClienteleSquid):
              },
         },
       };
-
-
+      self.configure();
 
 
 class ExerciseSetSquid(ClienteleSquid):
@@ -221,41 +209,41 @@ class ExerciseSetSquid(ClienteleSquid):
             },
         ]
       };
+      self.configure();
 
 
 
 class SessionSquid(ClienteleSquid):
-
   def __init__(self):
       ClienteleSquid.__init__(self);
       self.table = 'session';
       self.format = {
         'search' : {
-           'defaults' : ['session.id', 'client.user', 'session.time'],
+           'fields'   : ['session.id', 'client.user', 'session.time'],
            'order'    : 'order by session.time desc',
         },
         'new' : {
-            'fields' : ['clientid', 'services', 'payment', 'time', 'duration', 'notes'],
+            'fields' : ['clientid', 'tags', 'payment', 'time', 'duration', 'notes'],
             'preset' : {
                'time'     : 'now',
                'duration' : '1 hour',
-               'services' : 'workout',
+               'tags'     : 'workout;green',
                'payment'  : 0,
              },
              'postprocessor' : self.postproc,
         },
         'list' : {
-            'fields' : ['session.id', 'time', 'duration', 'services', 'payment',  'client.user', 'client.name'],
+            'fields' : ['session.id', 'client.user', 'tags', 'time', 'duration', 'payment', 'client.tags'],
             'preset' : {
              },
         },
         'edit' : {
-            'fields' : ['id', 'time', 'duration', 'services', 'payment', 'clientid', 'notes'],
+            'fields' : ['id', 'time', 'duration', 'tags', 'payment', 'clientid', 'notes'],
             'preset' : {
              },
         },
         'view' : {
-            'fields' : ['session.id', 'time', 'duration', 'services', 'payment',  'client.user', 'client.name', 'client.id', 'session.notes'],
+            'fields' : ['session.id', 'time', 'duration', 'tags', 'payment',  'client.user', 'client.name', 'client.id', 'session.notes'],
             'preset' : {
              },
         },
@@ -282,7 +270,7 @@ class SessionSquid(ClienteleSquid):
               }],
               'new'  : {
                      'number'    : -1,
-                     'condition' : 'services=workout',
+                     'condition' : 'tags like "%workout%"',
                      'table'     : 'exercise_set',
                      'fields'    : ['reps', 'resistance', 'exerciseid'],
                      'preset'    : {
@@ -307,6 +295,8 @@ class SessionSquid(ClienteleSquid):
             },
           ],
       };
+      self.configure();
+
 
 
   def postproc(self, args):
@@ -338,63 +328,49 @@ class SessionSquid(ClienteleSquid):
 
 class IngredientSquid(ClienteleSquid):
   table = 'ingredient'
-  format = {
-    'search' : {
-        'defaults' : ['name'],
-    },
-    'new' : {
-        'fields' : ['name', 'servingsize', 'calories', 'fat', 'carbs', 'protein'],
-        'preset' : {
-         },
-    },
-    'view' : {
-        'fields' : ['name', 'servingsize', 'calories', 'fat', 'carbs', 'protein'],
-        'preset' : {
-         },
-    },
-    'list' : {
-        'fields' : ['name', 'servingsize', 'calories', 'fat', 'carbs', 'protein'],
-        'preset' : {
-         },
-    },
-    'edit' : {
-        'fields' : ['name', 'servingsize', 'calories', 'fat', 'carbs', 'protein'],
-        'preset' : {
-         },
-    },
-  };
-
-
-
-class RecipeSquid(ClienteleSquid):
-
   def __init__(self):
       ClienteleSquid.__init__(self);
-      self.table = 'recipe'
       self.format = {
+          'fields' : ['id', 'servingsize', 'recipeid', 'ingredientid'],
+          'view'  : {'fields': ['id', 'servingsize', 'recipe.name', 'ing.name']},
+          'list'  : {'fields': ['id', 'servingsize', 'recipe.name', 'ing.name']},
+          'join' : [
+            {
+              'type'       : 'one',
+              'foreignkey' : 'recipeid',
+              'table'      : 'food',
+              'alias'      : 'recipe',
+              'primarykey' : 'id',
+              'pseudonym'  : 'recipe',
+              'fields'     : ['name']
+            },
+            {
+              'type'       : 'one',
+              'foreignkey' : 'ingredientid',
+              'table'      : 'food',
+              'alias'      : 'ing',
+              'primarykey' : 'id',
+              'pseudonym'  : 'ing',
+              'fields'     : ['name']
+            },
+            ]
+      };
+      self.table = 'ingredient'
+      self.configure();
+
+
+
+class FoodSquid(ClienteleSquid):
+  def __init__(self):
+      ClienteleSquid.__init__(self);
+      self.table = 'food'
+      self.format = {
+        'fields' : ['id', 'name', 'calories', 'fat', 'carbs', 'protein', 'servingsize'],
         'search' : {
-            'defaults' : ['name'],
-        },
-        'new' : {
-            'fields' : ['name', 'servingsize'],
-            'preset' : {
-             },
-             'postpostprocessor' : self.postpostproc,
-        },
-        'edit' : {
             'fields' : ['name'],
-            'preset' : {
-             },
-        },
-        'view' : {
-            'fields' : ['id', 'name', 'calories', 'fat', 'carbs', 'protein'],
-            'preset' : {
-             },
         },
         'list' : {
-            'fields' : ['id', 'name', 'calories', 'fat', 'carbs', 'protein'],
-            'preset' : {
-             },
+             'preprocessor' : self.listpreproc,
         },
         'join' :
           [
@@ -402,19 +378,17 @@ class RecipeSquid(ClienteleSquid):
              'type'       : 'many',
              'conditions' : [
                {
-                 'table'     : 'ingredient',
+                 'table'     : 'food',
+                 'alias'     : 'f',
                },
                {
-                 'table'     : 'recipe_ingredient',
+                 'table'     : 'ingredient',
                  'type'      : 'where',
-                 'condition' : 'recipe_ingredient.recipeid=%s '                    +
-                               ' and recipe_ingredient.ingredientid=ingredient.id' +
-                               ' and recipe_ingredient.recipeid=recipe.id',
+                 'condition' : 'ingredient.recipeid=%s and f.id=ingredient.ingredientid and food.id=f.id',
                  'variables' : ['id'],
-               }, 
-             ],
+               },],
              'new'       : {
-                 'table'     : 'recipe_ingredient',
+                 'table'     : 'ingredient',
                  'fields'    : ['ingredientid', 'servingsize'],
                  'preset'    : {
                     'recipeid' : 'id',
@@ -422,25 +396,40 @@ class RecipeSquid(ClienteleSquid):
              },
              'view' : {
                 'fields' : [
-                    'ingredient.id', 
-                    'ingredient.name', 
-                    'ingredient.servingsize', 
-                    'ingredient.fat',
-                    'ingredient.carbs',
-                    'ingredient.protein',
+                    'f.id', 
+                    'f.name', 
+                    'f.servingsize', 
+                    'f.fat',
+                    'f.carbs',
+                    'f.protein',
                 ],
-                'preset' : {
-                },
              },
             },
           ],
       };
+      self.configure();
 
-  def postpostproc(self, args):
+  def listpreproc(self, args):
+      save = self.data;
       s = args['squids']['ingredient'];
-      id = args['data']['id'];
-      s.query()
-
+      for d in args['data']:
+          sql =("select * from food inner join ingredient on"
+              + " food.id=ingredient.ingredientid"
+              + " where ingredient.recipeid=%d" % d['id']);
+          s.query(sql)
+          d['calories'] = 0;
+          d['fat']      = 0;
+          d['carbs']    = 0;
+          d['protein']  = 0;
+          if not s.data: continue;
+          for i in s.data:
+              d['calories'] +=  i['calories'];
+              d['fat'     ] +=  i['fat'     ];
+              d['carbs'   ] +=  i['carbs'   ];
+              d['protein' ] +=  i['protein' ];
+          self.update(d);
+      self.data = save;
+      return args;
 
 
 
@@ -448,32 +437,17 @@ class SnacklogSquid(ClienteleSquid):
   def __init__(self):
       ClienteleSquid.__init__(self);
       self.table = 'snacklog'
-      self.aliases = ['log'];
+      self.aliases = ['snack'];
       self.format = {
+        'fields' : {'id', 'date', 'clientid', 'foodid'},
         'search' : {
            'defaults': ['date', 'client.user'],
            'order'   : 'order by date desc',
         },
-        'new' : {
-            'fields' : ['date', 'clientid'],
-            'preset' : {
-             },
-        },
-        'edit' : {
-            'fields' : ['date', 'clientid'],
-            'preset' : {
-             },
-        },
-        'view' : {
-            'fields' : ['id', 'date', 'client.user'],
-            'preset' : {
-             },
-        },
-        'list' : {
-            'fields' : ['date', 'client.user'],
-            'preset' : {
-            },
-        },
+        'new' : { 'fields' : ['date', 'clientid'], },
+        'edit' : { 'fields' : ['date', 'clientid'], },
+        'view' : { 'fields' : ['id', 'date', 'client.user'], },
+        'list' : { 'fields' : ['date', 'client.user'], },
         'join' : [
            {
               'type'       : 'one',
@@ -485,224 +459,71 @@ class SnacklogSquid(ClienteleSquid):
            },
            {
              'type'       : 'many',
-             'conditions' : [
-               {
-                 'table'     : 'recipe',
-               },
-               {
-                 'table'     : 'snacklog_recipe',
+             'conditions' : [ {
+                 'table'     : 'food',
+               }, {
+                 'table'     : 'snacklog_food',
                  'type'      : 'where',
-                 'condition' : 'snacklog_recipe.recipeid=recipe.id '          +
-                               ' and snacklog_recipe.snacklogid=snacklog.id ' +
-                               ' and snacklog_recipe.snacklogid=%s',
+                 'condition' : 'snacklog_food.foodid=food.id '          +
+                               ' and snacklog_food.snacklogid=snacklog.id ' +
+                               ' and snacklog_food.snacklogid=%s',
                  'variables' : ['id'],
                }, 
              ],
-             'new'       : 
-             {
-                 'table'     : 'snacklog_recipe',
-                 'fields'    : ['recipeid', 'servingsize'],
+             'new'       : {
+                 'table'     : 'snacklog_food',
+                 'fields'    : ['foodid', 'servingsize'],
                  'preset'    : {
                     'snacklogid' : 'id',
                  },
              },
              'view' : {
                 'fields' : [
-                    'recipe.id', 
-                    'recipe.name', 
-                    'recipe.fat',
-                    'recipe.carbs',
-                    'recipe.protein',
+                    'food.id', 
+                    'food.name', 
+                    'food.fat',
+                    'food.carbs',
+                    'food.protein',
                 ],
-                'preset' : {
-                },
              },
-          }, {
-             'type'       : 'many',
-             'conditions' : [
-               {
-                 'table'     : 'ingredient',
-               },
-               {
-                 'table'     : 'snacklog_ingredient',
-                 'type'      : 'where',
-                 'condition' : 'snacklog_ingredient.ingredientid=ingredient.id '  +
-                               ' and snacklog_ingredient.snacklogid=snacklog.id ' +
-                               ' and snacklog_ingredient.snacklogid=%s',
-                 'variables' : ['id'],
-               }, 
-             ],
-             'new'       : 
-             {
-                 'table'     : 'snacklog_ingredient',
-                 'fields'    : ['ingredientid', 'servingsize'],
-                 'preset'    : {
-                    'snacklogid' : 'id',
-                 },
-             },
-             'view' : {
-                'fields' : [
-                    'ingredient.id', 
-                    'ingredient.name', 
-                    'ingredient.fat',
-                    'ingredient.carbs',
-                    'ingredient.protein',
-                ],
-                'preset' : {
-                },
-             },
-          },
+          }, 
         ],
       };
+      self.configure();
 
 
 
-
-class SnacklogIngredientSquid(ClienteleSquid):
-  table = 'snacklog_ingredient'
-  format = {
-    'new' : {
-        'fields' : ['ingredientid', 'snacklogid'],
-        'preset' : {
-         },
-    },
-    'edit' : {
-        'fields' : ['ingredientid', 'snacklogid'],
-        'preset' : {
-         },
-    },
-    'list' : {
-        'fields' : ['ingredient.name', 'snacklog.id'],
-        'preset' : {
-         },
-    },
-    'view' : {
-        'fields' : ['ingredient.name', 'snacklog.id'],
-        'preset' : {
-         },
-    },
-    'join'  : [
-        {
-          'type'       : 'one',
-          'foreignkey' : 'ingredientid',
-          'table'      : 'ingredient',
-          'primarykey' : 'id',
-          'pseudonym'  : 'ingredient',
-          'fields'     : ['name']
-        },
-        {
-          'type'       : 'one',
-          'foreignkey' : 'snacklogid',
-          'table'      : 'snacklog',
-          'primarykey' : 'id',
-          'pseudonym'  : 'snacklog',
-          'fields'     : ['id']
-        },
-    ]
-  };
-
+class SnacklogFoodSquid(ClienteleSquid):
   def __init__(self):
       ClienteleSquid.__init__(self);
+      table = 'snacklog_food'
+      format = {
+        'fields' : ['foodid', 'snacklogid'],
+        'join'  : [
+              {
+                'type'       : 'one',
+                'foreignkey' : 'foodid',
+                'table'      : 'food',
+                'primarykey' : 'id',
+                'pseudonym'  : 'food',
+                'fields'     : ['name']
+              },
+              {
+                'type'       : 'one',
+                'foreignkey' : 'snacklogid',
+                'table'      : 'snacklog',
+                'primarykey' : 'id',
+                'pseudonym'  : 'snacklog',
+                'fields'     : ['id']
+              },
+          ]
+      }; 
+      self.configure();
 
 
-
-class SnacklogRecipeSquid(ClienteleSquid):
-  table = 'snacklog_recipe'
-  format = {
-    'new' : {
-        'fields' : ['recipeid', 'snacklogid'],
-        'preset' : {
-         },
-    },
-    'edit' : {
-        'fields' : ['recipeid', 'snacklogid'],
-        'preset' : {
-         },
-    },
-    'list' : {
-        'fields' : ['recipe.name', 'snacklog.id'],
-        'preset' : {
-         },
-    },
-    'view' : {
-        'fields' : ['recipe.name', 'snacklog.id'],
-        'preset' : {
-         },
-    },
-    'join'  : [
-        {
-          'type'       : 'one',
-          'foreignkey' : 'recipeid',
-          'table'      : 'recipe',
-          'primarykey' : 'id',
-          'pseudonym'  : 'recipe',
-          'fields'     : ['name']
-        },
-        {
-          'type'       : 'one',
-          'foreignkey' : 'snacklogid',
-          'table'      : 'snacklog',
-          'primarykey' : 'id',
-          'pseudonym'  : 'snacklog',
-          'fields'     : ['id']
-        },
-    ]
-  };
-
-  def __init__(self):
-      ClienteleSquid.__init__(self);
-
-
-class RecipeIngredientSquid(ClienteleSquid):
-  table = 'recipe_ingredient'
-  format = {
-    'new' : {
-        'fields' : ['ingredientid', 'recipeid'],
-        'preset' : {
-         },
-    },
-    'edit' : {
-        'fields' : ['ingredientid', 'recipeid'],
-        'preset' : {
-         },
-    },
-    'list' : {
-        'fields' : ['ingredient.name', 'recipe.name'],
-        'preset' : {
-         },
-    },
-    'view' : {
-        'fields' : ['recipe_ingredient.id', 'ingredient.id', 'recipe.id', 'ingredient.name', 'recipe.name'],
-        'preset' : {
-         },
-    },
-    'join'  : [
-        {
-          'type'       : 'one',
-          'foreignkey' : 'ingredientid',
-          'table'      : 'ingredient',
-          'primarykey' : 'id',
-          'pseudonym'  : 'ingredient',
-          'fields'     : ['name']
-        },
-        {
-          'type'       : 'one',
-          'foreignkey' : 'recipeid',
-          'table'      : 'recipe',
-          'primarykey' : 'id',
-          'pseudonym'  : 'recipe',
-          'fields'     : ['name']
-        },
-    ]
-  };
-
-  def __init__(self):
-      ClienteleSquid.__init__(self);
-
-
-class Recipe(squirrel.squish.Squish, RecipeSquid):
+class Food(squirrel.squish.Squish, FoodSquid):
       def __init__(self):
-          RecipeSquid.__init__(self);
+          FoodSquid.__init__(self);
 class Client(squirrel.squish.Squish, ClientSquid):
       def __init__(self):
           ClientSquid.__init__(self);
@@ -728,23 +549,24 @@ class Clientele():
       def __init__(self):
           self.aliases = {
              'exercise_set' : 'set',
-             'snacklog'     : 'log',
+             'snacklog' : 'snack',
           }
-          self.squids = {}
-          self.client = Client()
-          self.exercise = Exercise()
-          self.exset = ExerciseSet()
-          self.session = Session()
-          self.recipe = Recipe()
+
+          self.squids     = {}
+          self.client     = Client()
+          self.exercise   = Exercise()
+          self.exset      = ExerciseSet()
+          self.session    = Session()
+          self.food       = Food()
           self.ingredient = Ingredient()
-          self.snacklog = Snacklog()
+          self.snacklog   = Snacklog()
 
           self.squids['client']              = self.client
           self.squids['exercise']            = self.exercise
           self.squids['set']                 = self.exset
           self.squids['session']             = self.session
-          self.squids['recipe']              = self.recipe
+          self.squids['food']                = self.food
           self.squids['ingredient']          = self.ingredient
-          self.squids['snacklog']            = self.snacklog
+          self.squids['snack']            = self.snacklog
           for squid in self.squids:
               self.squids[squid].db = self;
